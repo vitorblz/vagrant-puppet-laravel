@@ -1,33 +1,41 @@
-exec { "apt-update":
-    command => "/usr/bin/apt-get update"
+exec { "add-rep-php7":
+    path => [ "/bin/", "/sbin/" , "/usr/bin/", "/usr/sbin/", "/usr/local/bin/", "/usr/local/"],
+    command => "add-apt-repository ppa:ondrej/php"
 }
 
-package { ["php5","php5-mcrypt", "php5-gd", "apache2", "libapache2-mod-php5"]:
+exec { "apt-update":
+    command => "/usr/bin/apt-get update",
+    require => Exec["add-rep-php7"]
+}
+
+package { ["php7.0","php7.0-fpm", "php7.0-mysql", "libapache2-mod-php7.0", "php7.0-mcrypt", "php7.0-curl", "php7.0-json", "php7.0-xml", "php7.0-zip", "php7.0-mbstring", "apache2", "openssl", "curl"]:
     ensure => installed,
     require => Exec["apt-update"]
 }
 
-exec { "curl":
+exec { "install-composer":
     command => "/usr/bin/curl -sS https://getcomposer.org/installer | sudo /usr/bin/php -- --install-dir=/usr/local/bin --filename=composer",
-    require => Package["php5"]
+    require => Package["php7.0", "curl"]
 }
 
-exec { "php5enmod":
-    path => [ "/bin/", "/sbin/" , "/usr/bin/", "/usr/sbin/" ],
-    command => "php5enmod mcrypt",
-    require => Package["php5"]
-}
-
-exec { "create-laravel-folder":
+exec { "add-swap":
     path => [ "/bin/", "/sbin/" , "/usr/bin/", "/usr/sbin/", "/usr/local/bin/", "/usr/local/"],
-    command => 'mkdir /home/vagrant/laravel',
-    require => Exec["php5enmod"]
+    command => 'sudo /bin/dd if=/dev/zero of=/var/swap.1 bs=1M count=1024; sudo /sbin/mkswap /var/swap.1; sudo /sbin/swapon /var/swap.1',
+    require => Exec["install-composer"]
 }
 
 exec { "install-laravel":
     path => [ "/bin/", "/sbin/" , "/usr/bin/", "/usr/sbin/", "/usr/local/bin/", "/usr/local/"],
-    command => 'sudo composer create-project laravel/laravel /home/vagrant/laravel/ "5.0.*" --prefer-dist',
-    require => Exec["create-laravel-folder"]
+    command => '/usr/local/bin/composer global require "laravel/installer"',
+    environment => ["COMPOSER_HOME=/home/vagrant/"],
+    cwd         => "/home/vagrant/", 
+    user        => vagrant, 
+    group       => vagrant,
+    require => Exec["add-swap"],
 }
 
-
+exec { "set-environment-var-path":
+    path => [ "/bin/", "/sbin/" , "/usr/bin/", "/usr/sbin/", "/usr/local/bin/", "/usr/local/"],
+    command => 'sed -e "s|PATH=\"|PATH=\"/home/vagrant/vendor/bin:|" -i /etc/environment',
+    require => Exec["install-laravel"]
+}
